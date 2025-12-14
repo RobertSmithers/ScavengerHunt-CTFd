@@ -1,0 +1,14 @@
+{% extends "challenge.html" %}
+
+{% block description %}
+    <div style="border:3px solid red; padding:10px;">
+        PHOTO CHALLENGE VIEW ACTIVE
+    </div>
+
+    <!-- jinja variable for the challenge description -->
+    {{ challenge.html }}
+    
+    <!-- div to insert photo upload button -->
+    <div id="photo_upload" name="photo_upload"> </div>
+
+{% endblock %}
