@@ -2,6 +2,8 @@ services:
   ctfd:
     build: .
     restart: always
+    ports: 
+      - "8000:8000" # Needed on my dev network since I'm on WSL
     environment:
       - UPLOAD_FOLDER=/var/uploads
       - DATABASE_URL=mysql+pymysql://${MARIADB_USER}:${MARIADB_PASSWORD}@db/${MARIADB_DATABASE}
@@ -10,37 +12,12 @@ services:
       - LOG_FOLDER=/var/log/CTFd
       - ACCESS_LOG=-
       - ERROR_LOG=-
-      - REVERSE_PROXY=true
     volumes:
       - .data/CTFd/logs:/var/log/CTFd
       - .data/CTFd/uploads:/var/uploads
       - .:/opt/CTFd:ro
     depends_on:
-      permissions:
-        condition: service_completed_successfully
-      db:
-        condition: service_started
-      cache:
-        condition: service_started
-    networks:
-      default:
-      internal:
-
-  # TODO: CTFd 4.0 Migrate to named volumes. Users will likely need to manually migrate existing files
-  permissions:
-    image: alpine:3.23
-    user: root
-    volumes:
-      - .data/CTFd/logs:/var/log/CTFd
-      - .data/CTFd/uploads:/var/uploads
-    command: chown -R 1001:1001 /var/uploads /var/log/CTFd
-
-  cloudflared:
-    image: cloudflare/cloudflared
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run
-    environment:
-      - TUNNEL_TOKEN=${CLOUDFLARED_TUNNEL_TOKEN}
+      - db
     networks:
       default:
       internal:
@@ -58,11 +35,10 @@ services:
       - .data/mysql:/var/lib/mysql
     networks:
       internal:
-    # This command is required to set important mariadb defaults
     command: [mysqld, --character-set-server=utf8mb4, --collation-server=utf8mb4_unicode_ci, --wait_timeout=28800, --log-warnings=0]
 
   cache:
-    image: redis:7
+    image: redis:4
     restart: always
     volumes:
       - .data/redis:/data
