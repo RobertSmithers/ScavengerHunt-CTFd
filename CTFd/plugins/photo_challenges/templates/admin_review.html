@@ -1,0 +1,46 @@
+{% extends 'admin/base.html' %}
+{% block content %}
+<div class="container">
+  <h3>Photo Evidence Review</h3>
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Team</th>
+        <th>Challenge</th>
+        <th>Submitted</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in submissions %}
+      <tr>
+        <td>{{ s.id }}</td>
+        <td>{{ s.team_id }}</td>
+        <td>{{ s.challenge_id }}</td>
+        <td>{{ s.submitted_at }}</td>
+        <td>{{ s.status }}</td>
+        <td>
+          <a href="/api/v1/photo_challenges/admin/file/{{ s.filepath }}" target="_blank" class="btn btn-sm btn-info">View</a>
+          {% if s.status == 'pending' %}
+          <form style="display:inline" method="post" action="/api/v1/photo_challenges/admin/review/{{ s.id }}/approve">
+            <input type="hidden" name="nonce" value="{{ Session.nonce }}">
+            <button class="btn btn-sm btn-success">Approve</button>
+          </form>
+          <form style="display:inline" method="post" action="/api/v1/photo_challenges/admin/review/{{ s.id }}/reject">
+            <input type="hidden" name="nonce" value="{{ Session.nonce }}">
+            <button class="btn btn-sm btn-danger">Reject</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+  <script src="/plugins/photo_challenges/assets/admin.js"></script>
+{% endblock %}

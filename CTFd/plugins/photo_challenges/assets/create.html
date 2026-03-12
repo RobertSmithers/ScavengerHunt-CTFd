@@ -1,0 +1,27 @@
+{% extends "admin/challenges/create.html" %}
+
+{% block header %}
+    <!-- Photo Challenges: admins can create a photo-upload challenge which requires manual review on submission -->
+    <div class="alert alert-secondary" role="alert">
+        Photo Challenges enable participants to upload and submit images as their flag. This is used in scavenger hunts and other interactive challenges. <br>
+        After uploading, the submission will enter a pending state until the admin manually reviews and approves the photo as a valid solution.
+    </div>
+{% endblock %}
+
+
+{% block value %}
+    <!-- Original implementation for the value attribute of the challenge -->
+    <div class="form-group">
+        <label>
+            Value:<br>
+            <small class="form-text text-muted">
+                The value of your challenge
+            </small>
+        </label>
+        <input type="number" class="form-control" name="value" placeholder="Enter Challenge Value">
+    </div>
+{% endblock %}
+
+{% block type %}
+    <input type="hidden" value="photo" name="type" id="chaltype">
+{% endblock %}

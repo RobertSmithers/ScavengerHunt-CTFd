@@ -154,13 +154,10 @@ function checkChallengePendingOnOpen() {
     }
 }
 
-// Override the submit button behavior for multi-question challenges
+// Override the submit button behavior for photo challenges
 function overrideSubmitBehavior() {
-    console.log("Overriding submit behavior...");
-    
     // Check if already overridden
     if (CTFd.lib.$("#challenge-submit-photo").length > 0 || CTFd.lib.$("#challenge-submit").data('photo-question-override')) {
-        console.log("Submit behavior already overridden, skipping...");
         return;
     }
     
@@ -194,7 +191,6 @@ function overrideSubmitBehavior() {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
-        console.log("Form submit blocked for multi-question challenge");
         return false;
     });
     
@@ -206,11 +202,8 @@ function overrideSubmitBehavior() {
         
         // Prevent rapid double-clicks
         if (CTFd.lib.$(this).data('submitting')) {
-            console.log("Already submitting, ignoring duplicate click");
             return;
         }
-        
-        console.log("Custom submit handler triggered");
         
         // Robustly determine challenge id from several possible sources
         function resolveChallengeId() {
@@ -258,7 +251,7 @@ function overrideSubmitBehavior() {
             return;
         }
 
-        console.log("Submit data:", { challenge_id, fileInput });
+        // console.log("Submit data:", { challenge_id, fileInput });
         if (Number.isNaN(challenge_id)) {
             showSimpleNotification(
                 __("Error"),
@@ -291,8 +284,7 @@ function overrideSubmitBehavior() {
                 'Accept': 'application/json'
             },
             body: formData
-        }).then(response => { console.log(response); return response.json(); }).then(function(response) {
-            console.log("Response received:", response);
+        }).then(response => { return response.json(); }).then(function(response) {
             
             // Re-enable submit button
             CTFd.lib.$("#challenge-submit-photo").prop('disabled', false);
@@ -336,10 +328,10 @@ function overrideSubmitBehavior() {
     });
     
     // Handle Enter key
-    CTFd.lib.$("#challenge-input").on('keyup.multi-question', function(e) {
+    CTFd.lib.$("#challenge-input").on('keyup.photo-question', function(e) {
         if (e.keyCode === 13) {
             e.preventDefault();
-            CTFd.lib.$("#challenge-submit-multi").trigger('click.multi-question');
+            CTFd.lib.$("#challenge-submit-photo").trigger('click.photo-question');
         }
     });
 }
@@ -395,42 +387,43 @@ function showPhotoChallengeResponse(data) {
     }, 5000);
 }
 
-CTFd._internal.challenge.submit = function (preview) {
-    console.log("[photo] custom submit handler fired, preview =", preview);
-    var challenge_id = parseInt(CTFd.lib.$('#challenge-id').val())
+// This function gets completed overrided by our own
+// CTFd._internal.challenge.submit = function (preview) {
+//     console.log("[photo] custom submit handler fired, preview =", preview);
+//     var challenge_id = parseInt(CTFd.lib.$('#challenge-id').val())
 
-    // If a photo file input exists, send multipart/form-data with the file
-    const fileInput = document.querySelector('#photo-file');
-    if (fileInput && fileInput.files && fileInput.files.length > 0) {
-        const file = fileInput.files[0];
-        console.log("Submitting photo file:", file);
-        const form = new FormData();
-        form.append('challenge_id', challenge_id);
-        // include submission field so server-side code expecting form['submission'] doesn't fail
-        form.append('submission', '');
-        form.append('file', file);
+//     // If a photo file input exists, send multipart/form-data with the file
+//     const fileInput = document.querySelector('#photo-file');
+//     if (fileInput && fileInput.files && fileInput.files.length > 0) {
+//         const file = fileInput.files[0];
+//         console.log("Submitting photo file:", file);
+//         const form = new FormData();
+//         form.append('challenge_id', challenge_id);
+//         // include submission field so server-side code expecting form['submission'] doesn't fail
+//         form.append('submission', '');
+//         form.append('file', file);
 
-        // Send the multipart/form-data to the plugin upload API so the server
-        // receives a multipart Content-Type instead of application/json.
-        let url = '/api/v1/photo_evidence/photos/upload';
-        if (preview) {
-            url += '?preview=true';
-        }
+//         // Send the multipart/form-data to the plugin upload API so the server
+//         // receives a multipart Content-Type instead of application/json.
+//         let url = '/api/v1/photo_evidence/photos/upload';
+//         if (preview) {
+//             url += '?preview=true';
+//         }
 
-        return fetch(url, {
-            method: 'POST',
-            body: form,
-            credentials: 'same-origin'
-        }).then(function (response) {
-            // Preserve response handling consistent with other submit handlers
-            if (response.status === 429) {
-                return response;
-            }
-            if (response.status === 403) {
-                return response;
-            }
-            return response;
-        });
-    }
+//         return fetch(url, {
+//             method: 'POST',
+//             body: form,
+//             credentials: 'same-origin'
+//         }).then(function (response) {
+//             // Preserve response handling consistent with other submit handlers
+//             if (response.status === 429) {
+//                 return response;
+//             }
+//             if (response.status === 403) {
+//                 return response;
+//             }
+//             return response;
+//         });
+//     }
 
-};
+// };

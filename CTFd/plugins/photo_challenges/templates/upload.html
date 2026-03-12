@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container">
+  <h3>Upload Photo Evidence for: {{ challenge.name if challenge else 'Challenge' }}</h3>
+  <form method="post" enctype="multipart/form-data">
+    <div class="form-group">
+      <label for="photo">Photo (jpg, png)</label>
+      <input type="file" class="form-control" name="photo" id="photo" accept="image/*" required>
+    </div>
+    <button class="btn btn-primary" type="submit">Submit for Review</button>
+    <a class="btn btn-secondary" href="{{ url_for('challenges.view', challenge_id=challenge.id) }}">Back</a>
+  </form>
+</div>
+{% endblock %}

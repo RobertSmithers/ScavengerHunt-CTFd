@@ -1,0 +1,12 @@
+/*
+ * DISABLED: styles.css
+ * Minimal plugin stylesheet retained for reference but commented out
+ * because it is not currently referenced by any template or asset manifest.
+ * If you want to re-enable it, remove these comment markers.
+ */
+
+/* Minimal styles for photo_evidence plugin */
+.photo-evidence-preview {
+  max-width: 100%;
+  height: auto;
+}

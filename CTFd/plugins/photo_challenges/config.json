@@ -1,0 +1,7 @@
+{
+  "name": "Photo Challenges",
+  "route": "/admin/photo_evidence",
+  "version": "1.0.0",
+  "description": "A CTFd plugin that allows users to submit photo evidence for challenges.",
+  "author": "RJ"
+}

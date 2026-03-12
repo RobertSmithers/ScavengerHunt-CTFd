@@ -188,6 +188,23 @@ def create_app(config="CTFd.config.Config"):
     app = CTFdFlask(__name__)
     with app.app_context():
         app.config.from_object(config)
+        # # Allow overriding the session cookie domain from environment for
+        # # reverse-proxy or tunnel setups (e.g., ngrok). If `SESSION_COOKIE_DOMAIN`
+        # # or `NGROK_HOSTNAME` is provided in the environment, configure the
+        # # Flask session cookie to be valid for that hostname so browsers will
+        # # send the cookie when accessing via the external domain.
+        # try:
+        #     import os
+        #     cookie_domain = os.environ.get("SESSION_COOKIE_DOMAIN") or os.environ.get("NGROK_HOSTNAME")
+        #     if cookie_domain:
+        #         app.config["SESSION_COOKIE_DOMAIN"] = cookie_domain
+        #         # When using an HTTPS tunnel like ngrok, prefer secure cookies
+        #         app.config["SESSION_COOKIE_SAMESITE"] = "None"
+        #         app.config["SESSION_COOKIE_SECURE"] = True
+        #         app.logger.info(f"Configured session cookie domain for external access: {cookie_domain}")
+        # except Exception:
+        #     # Don't fail startup if environment inspection fails
+        #     app.logger.debug("Failed to configure SESSION_COOKIE_DOMAIN from environment", exc_info=True)
 
         from CTFd.cache import cache
         from CTFd.utils import import_in_progress

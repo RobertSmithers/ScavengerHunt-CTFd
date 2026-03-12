@@ -17,20 +17,6 @@ from sqlalchemy.sql import func
 import os, secrets
 import json
 
-# Attempt to load a local .env file in development (optional). If python-dotenv
-# is installed this will read `.env` or `.flaskenv` near the project root so
-# developers can keep secrets out of source control. In production (Docker,
-# systemd, kubernetes) prefer passing environment variables via the runtime.
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except Exception:
-    pass
-
-# Optional server-side ntfy integration: set `PHOTO_NTFY_URL` in the app config
-# to a full ntfy publish endpoint (e.g. https://ntfy.example.com/yourtopic).
-# This URL is never exposed to clients; messages are sent from the backend only.
-
 # photo_bp = Blueprint("photo_evidence", __name__, template_folder="templates", static_folder="static", url_prefix="/photo_evidence")
 photo_namespace = Namespace("photos", description="Endpoint to handle photo evidence submissions")
 
@@ -53,9 +39,18 @@ def _maybe_send_ntfy(challenge_id=None, challenge_name=None, team_id=None, submi
     exposed to clients. Optionally configure `PHOTO_NTFY_HEADERS` as a dict of
     extra headers (e.g. Authorization) to include with the request.
     """
-    ntfy_url = current_app.config.get('PHOTO_NTFY_URL')
+    # Prefer app config, but fall back to environment variable so users
+    # can set PHOTO_NTFY_URL via docker-compose / .env without modifying
+    # CTFd config objects.
+    ntfy_url = current_app.config.get('PHOTO_NTFY_URL') or os.environ.get('PHOTO_NTFY_URL')
     if not ntfy_url:
+        # Log both config and environment values to help debug missing config
+        cfg_val = current_app.config.get('PHOTO_NTFY_URL')
+        env_val = os.environ.get('PHOTO_NTFY_URL')
+        current_app.logger.info("photo_challenges: PHOTO_NTFY_URL not configured, skipping push (config=%s env=%s)", cfg_val, env_val)
         return
+
+    current_app.logger.info("photo_challenges: sending ntfy push to %s", ntfy_url)
 
     # Resolve challenge name if not provided
     if not challenge_name and challenge_id is not None:
@@ -88,20 +83,22 @@ def _maybe_send_ntfy(challenge_id=None, challenge_name=None, team_id=None, submi
 
     # Try requests first, fall back to urllib
     try:
-        # Try requests if available
+        # Try requests if available (prefer it for better error visibility)
         try:
             import requests
-            requests.post(ntfy_url, data=body.encode('utf-8'), headers=headers, timeout=5)
+            resp = requests.post(ntfy_url, data=body.encode('utf-8'), headers=headers, timeout=5)
+            current_app.logger.info("photo_challenges: ntfy response status=%s len=%s", getattr(resp, 'status_code', None), len(getattr(resp, 'text', '') or ""))
             return
-        except Exception:
-            pass
+        except Exception as e:
+            current_app.logger.debug("photo_challenges: requests post failed, falling back to urllib: %s", e, exc_info=True)
 
         # Fallback to urllib
         from urllib.request import Request, urlopen
         req = Request(ntfy_url, data=body.encode('utf-8'), headers=headers)
         urlopen(req, timeout=5)
-    except Exception as e:
-        current_app.logger.exception("photo_challenges: ntfy send failed: %s", e)
+        current_app.logger.info("photo_challenges: ntfy push sent via urllib")
+    except Exception:
+        current_app.logger.exception("photo_challenges: ntfy send failed")
 
 @photo_bp.route("/upload/<int:challenge_id>", methods=["GET","POST"])
 @authed_only
@@ -155,6 +152,13 @@ def upload(challenge_id):
 
         # Send optional server-side ntfy push (kept secret on server)
         try:
+            # Diagnostic log: show whether PHOTO_NTFY_URL is visible to the app/env
+            try:
+                cfg_val = current_app.config.get('PHOTO_NTFY_URL')
+            except Exception:
+                cfg_val = None
+            env_val = os.environ.get('PHOTO_NTFY_URL')
+            current_app.logger.info("photo_challenges: calling _maybe_send_ntfy (cfg=%s env=%s)", cfg_val, env_val)
             _maybe_send_ntfy(challenge_name=challenge_name, team_id=team_id, submission_id=submission.id)
         except Exception:
             current_app.logger.exception("photo_challenges: ntfy push failed")
@@ -165,65 +169,7 @@ def upload(challenge_id):
     challenge = Challenges.query.filter_by(id=challenge_id).first()
     return render_template("upload.html", challenge=challenge)
 
-@photo_namespace.route("/solve/<subflag_id>")
-class Solve(Resource):
-    """Accepts a file upload for a photo challenge and creates a pending PhotoSubmission."""
-    @authed_only
-    def post(self, subflag_id):
-        # support either 'file' or 'photo' field names
-        file = None
-        if "file" in request.files:
-            file = request.files["file"]
-        elif "photo" in request.files:
-            file = request.files["photo"]
 
-        if file is None or file.filename == "":
-            return {"success": False, "message": "No file uploaded"}, 400
-
-        if not allowed_file(file.filename):
-            return {"success": False, "message": "Invalid file type"}, 400
-
-        filename = secure_filename(file.filename)
-        filename = f"{secrets.token_hex(8)}_{filename}"
-        location = f"photo_evidence/{filename}"
-        file_row = upload_file(file=file, challenge_id=subflag_id, type="challenge", location=location)
-        path = file_row.location
-
-        user = get_current_user()
-        team = get_current_team()
-        team_id = team.id if team else (user.id if user else None)
-
-        submission = PhotoSubmission(team_id=team_id, challenge_id=subflag_id, filename=filename, filepath=path)
-        db.session.add(submission)
-        db.session.commit()
-
-        # Mark the challenge as paused (pending review)
-        try:
-            chal = Challenges.query.filter_by(id=subflag_id).first()
-            if chal:
-                chal.state = "paused"
-                db.session.commit()
-        except Exception:
-            db.session.rollback()
-
-        # Notify the team
-        challenge_name = None
-        try:
-            chal = Challenges.query.filter_by(id=subflag_id).first()
-            challenge_name = chal.name if chal else str(subflag_id)
-            note = Notifications(title="Photo submission pending", content=f"Your photo submission for challenge '{challenge_name}' is pending review.", team_id=team_id)
-            db.session.add(note)
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-
-        # Send optional server-side ntfy push
-        try:
-            _maybe_send_ntfy(challenge_name=challenge_name, team_id=team_id, submission_id=submission.id)
-        except Exception:
-            current_app.logger.exception("photo_challenges: ntfy push failed")
-
-        return {"success": True, "message": "Photo submitted for review", "submission_id": submission.id}
 
 @photo_namespace.route("/upload", methods=["POST"])
 class UploadPhoto(Resource):
@@ -231,6 +177,7 @@ class UploadPhoto(Resource):
     method_decorators = [authed_only, bypass_csrf_protection]
 
     def post(self):
+        current_app.logger.info("photo_challenges: UploadPhoto.post invoked; files=%s form_keys=%s remote=%s", list(request.files.keys()), list(request.form.keys()), request.remote_addr)
         if "file" not in request.files:
             return {"success": False, "message": "No file"}, 400
 
@@ -279,6 +226,13 @@ class UploadPhoto(Resource):
 
         # Send optional server-side ntfy push
         try:
+            # Diagnostic log: show whether PHOTO_NTFY_URL is visible to the app/env
+            try:
+                cfg_val = current_app.config.get('PHOTO_NTFY_URL')
+            except Exception:
+                cfg_val = None
+            env_val = os.environ.get('PHOTO_NTFY_URL')
+            current_app.logger.info("photo_challenges: calling _maybe_send_ntfy (cfg=%s env=%s)", cfg_val, env_val)
             _maybe_send_ntfy(challenge_name=challenge_name, team_id=team_id, submission_id=submission.id)
         except Exception:
             current_app.logger.exception("photo_challenges: ntfy push failed")
@@ -483,7 +437,7 @@ def upload_photo_fallback():
     This exists so `__init__.py` can register a direct Flask URL rule
     in environments where the RESTX namespace isn't attached yet.
     """
-    # Mirror the logic from the UploadPhoto Resource.post
+    current_app.logger.info("photo_challenges: upload_photo_fallback invoked; files=%s form_keys=%s remote=%s", list(request.files.keys()), list(request.form.keys()), request.remote_addr)
     if "file" not in request.files:
         return {"success": False, "message": "No file"}, 400
 
@@ -527,6 +481,26 @@ def upload_photo_fallback():
     except Exception:
         db.session.rollback()
 
+    # Send optional server-side ntfy push for fallback handler as well
+    try:
+        # Resolve challenge name for message clarity
+        challenge_name = None
+        try:
+            chal = Challenges.query.filter_by(id=int(challenge_id)).first()
+            challenge_name = chal.name if chal else str(challenge_id)
+        except Exception:
+            challenge_name = str(challenge_id)
+
+        try:
+            cfg_val = current_app.config.get('PHOTO_NTFY_URL')
+        except Exception:
+            cfg_val = None
+        env_val = os.environ.get('PHOTO_NTFY_URL')
+        current_app.logger.info("photo_challenges: upload_photo_fallback calling _maybe_send_ntfy (cfg=%s env=%s)", cfg_val, env_val)
+        _maybe_send_ntfy(challenge_id=int(challenge_id), challenge_name=challenge_name, team_id=team_id, submission_id=submission.id)
+    except Exception:
+        current_app.logger.exception("photo_challenges: ntfy push failed in fallback")
+
     return {"success": True, "message": "Photo submitted for review", "submission_id": submission.id}
 
 
@@ -547,3 +521,57 @@ def submission_status_fallback(challenge_id):
             status = sub.status
 
     return {"status": status}
+
+
+@admins_only
+def admin_file_fallback(filename):
+    """Fallback view to serve uploaded files to admins.
+
+    Mirrors the logic in `AdminFile.get` so the plugin can register a
+    direct Flask URL rule even if the RESTX namespace isn't available.
+    """
+    # Ensure a Files record exists for this location
+    f = Files.query.filter_by(location=filename).first()
+    if not f:
+        current_app.logger.info("photo_challenges: admin file requested but DB record missing: %s", filename)
+        abort(404)
+
+    uploader = get_uploader()
+    try:
+        base = getattr(uploader, "base_path", None)
+        current_app.logger.info("photo_challenges: serving admin file %s using uploader=%s base=%s", filename, type(uploader).__name__, base)
+        if base:
+            file_path = os.path.join(base, filename)
+            current_app.logger.info("photo_challenges: computed file_path=%s exists=%s", file_path, os.path.exists(file_path))
+            if os.path.exists(file_path) and os.path.isfile(file_path):
+                return send_file(file_path, as_attachment=False)
+
+        current_app.logger.info("photo_challenges: falling back to uploader.download for %s", filename)
+        return uploader.download(filename)
+    except Exception as e:
+        current_app.logger.exception("photo_challenges: error serving admin file %s: %s", filename, e)
+        abort(404)
+
+
+# Admin action fallbacks so `load(app)` can register direct POST rules
+@admins_only
+def admin_approve_fallback(submission_id):
+    """Fallback wrapper that calls the AdminApprove Resource.post method."""
+    try:
+        # instantiate resource and delegate
+        res = AdminApprove()
+        return res.post(submission_id)
+    except Exception:
+        current_app.logger.exception("photo_challenges: admin approve fallback failed")
+        abort(500)
+
+
+@admins_only
+def admin_reject_fallback(submission_id):
+    """Fallback wrapper that calls the AdminReject Resource.post method."""
+    try:
+        res = AdminReject()
+        return res.post(submission_id)
+    except Exception:
+        current_app.logger.exception("photo_challenges: admin reject fallback failed")
+        abort(500)
