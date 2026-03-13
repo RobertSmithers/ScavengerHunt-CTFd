@@ -7,30 +7,14 @@
   var container = document.getElementById("scoreboard");
   var prevData = {};
 
-  // ── View switching ──
-  var tabs = document.querySelectorAll(".view-tab");
-  var panels = document.querySelectorAll(".view-panel");
-
-  for (var t = 0; t < tabs.length; t++) {
-    tabs[t].addEventListener("click", function () {
-      for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove("active");
-      for (var j = 0; j < panels.length; j++) panels[j].classList.remove("active");
-      this.classList.add("active");
-      var target = document.getElementById(this.dataset.view + "-view");
-      if (target) target.classList.add("active");
-      if (this.dataset.view === "chart" && chart) chart.resize();
-    });
-  }
-
-  // ── Chart view ──
+  // ── Chart ──
   function fetchChartData() {
     fetch("/api/v1/units/scoreboard/detail")
       .then(function (r) { return r.json(); })
-      .then(function (data) { renderChart(data); })
+      .then(function (resp) { renderChart(resp.data || {}); })
       .catch(function () {});
   }
 
-  // Color palette for lines
   var COLORS = [
     "#d4af37", "#c0c0c0", "#cd7f32", "#4fc3f7", "#81c784",
     "#e57373", "#ba68c8", "#fff176", "#4dd0e1", "#ff8a65",
@@ -68,14 +52,11 @@
 
       var color = COLORS[i % COLORS.length];
 
-      // Show emblem only on the last data point
       var hasEmblem = !!unit.emblem_url;
       var dataWithSymbols = [];
       for (var k = 0; k < cumulative.length; k++) {
         var isLast = k === cumulative.length - 1;
-        var point = {
-          value: cumulative[k]
-        };
+        var point = { value: cumulative[k] };
         if (isLast && hasEmblem) {
           point.symbol = "image://" + unit.emblem_url;
           point.symbolSize = 32;
@@ -175,11 +156,11 @@
     chart.setOption(option, true);
   }
 
-  // ── Cards view ──
+  // ── Cards ──
   function fetchScoreboard() {
     fetch("/api/v1/units/scoreboard")
       .then(function (r) { return r.json(); })
-      .then(function (data) { renderCards(data); })
+      .then(function (resp) { renderCards(resp.data || []); })
       .catch(function () {});
   }
 
