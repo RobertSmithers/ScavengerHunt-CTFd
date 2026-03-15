@@ -12,15 +12,29 @@ services:
       - LOG_FOLDER=/var/log/CTFd
       - ACCESS_LOG=-
       - ERROR_LOG=-
+      - REVERSE_PROXY=true
     volumes:
       - .data/CTFd/logs:/var/log/CTFd
       - .data/CTFd/uploads:/var/uploads
       - .:/opt/CTFd:ro
     depends_on:
-      - db
+      permissions:
+        condition: service_completed_successfully
+      db:
+        condition: service_started
+      cache:
+        condition: service_started
     networks:
       default:
       internal:
+
+  permissions:
+    image: alpine:3.23
+    user: root
+    volumes:
+      - .data/CTFd/logs:/var/log/CTFd
+      - .data/CTFd/uploads:/var/uploads
+    command: chown -R 1001:1001 /var/uploads /var/log/CTFd
 
   db:
     image: mariadb:10.11
@@ -38,7 +52,7 @@ services:
     command: [mysqld, --character-set-server=utf8mb4, --collation-server=utf8mb4_unicode_ci, --wait_timeout=28800, --log-warnings=0]
 
   cache:
-    image: redis:4
+    image: redis:7
     restart: always
     volumes:
       - .data/redis:/data

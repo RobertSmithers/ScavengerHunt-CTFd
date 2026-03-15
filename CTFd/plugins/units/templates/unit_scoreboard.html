@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block stylesheets %}
+  {{ super() }}
+  <link rel="stylesheet" href="/plugins/units/assets/unit_scoreboard.css">
+{% endblock %}
+
+{% block content %}
+  <div class="jumbotron">
+    <div class="container">
+      <h1>Unit Standings</h1>
+    </div>
+  </div>
+  <div class="container">
+    <div id="score-chart"></div>
+    <div id="scoreboard"></div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script src="/plugins/units/assets/unit_scoreboard.js"></script>
+{% endblock %}
