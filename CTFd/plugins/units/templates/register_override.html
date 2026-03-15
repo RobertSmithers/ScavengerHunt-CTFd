@@ -71,41 +71,11 @@
                 {% for unit in get_units() %}
                   <option value="{{ unit.id }}">{{ unit.name }}</option>
                 {% endfor %}
-                <option value="__new__">+ Create a new unit</option>
               </select>
               <small class="form-text text-muted">
-                Select an existing unit or create a new one
+                Select your unit
               </small>
             </div>
-
-            <div class="mb-3" id="new-unit-group" style="display:none;">
-              <b>
-                <label class="form-label" for="new_unit_name">New Unit Name</label>
-                <span class="text-danger">*</span>
-              </b>
-              <input type="text" class="form-control" id="new_unit_name" name="new_unit_name" autocomplete="off">
-              <small class="form-text text-muted">
-                Enter a name for your new unit
-              </small>
-            </div>
-
-            <script>
-              (function() {
-                var sel = document.getElementById("unit_id");
-                var group = document.getElementById("new-unit-group");
-                var input = document.getElementById("new_unit_name");
-                sel.addEventListener("change", function() {
-                  if (sel.value === "__new__") {
-                    group.style.display = "";
-                    input.required = true;
-                  } else {
-                    group.style.display = "none";
-                    input.required = false;
-                    input.value = "";
-                  }
-                });
-              })();
-            </script>
 
             {{ form.nonce() }}
 
