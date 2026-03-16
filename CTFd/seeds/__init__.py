@@ -113,7 +113,7 @@ class SeedChallenge:
         ).hexdigest()[:12]
         return f"{self.FLAG_PREFIX}{{{digest}}}"
 
-    def create(self, secret_key):
+    def create(self, secret_key, position=0):
         """Stage Challenge, Flags, Tags, and Files for bulk insert.
 
         Idempotent — skips creation when a challenge with the same name
@@ -128,6 +128,9 @@ class SeedChallenge:
             name=self.name, category=self.category
         ).first()
         if existing:
+            if existing.position != position:
+                existing.position = position
+                db.session.add(existing)
             log.info("SKIP   %s (already exists, id=%d)", self.name, existing.id)
             return existing, False
 
@@ -140,6 +143,7 @@ class SeedChallenge:
             type="standard",
             state=self.state,
             requirements=self.requirements,
+            position=position,
         )
         db.session.add(challenge)
         db.session.flush()  # populate challenge.id for FK references

@@ -177,8 +177,8 @@ def seed(secret_key):
     """Seed all Golden Web 2026 challenges.  Safe to run multiple times."""
     created = 0
     skipped = 0
-    for challenge_def in CHALLENGES:
-        _, was_created = challenge_def.create(secret_key)
+    for position, challenge_def in enumerate(CHALLENGES, start=1):
+        _, was_created = challenge_def.create(secret_key, position=position)
         if was_created:
             created += 1
         else:
