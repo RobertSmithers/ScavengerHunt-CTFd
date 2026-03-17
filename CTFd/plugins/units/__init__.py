@@ -34,7 +34,7 @@ def get_units():
 
 
 def get_unit_scoreboard_data():
-    """Build unit scoreboard: aggregate member scores per unit."""
+    """Build unit scoreboard: best individual member score per unit."""
     # Solve scores per user
     scores = (
         db.session.query(
@@ -79,44 +79,71 @@ def get_unit_scoreboard_data():
         .subquery()
     )
 
-    # Aggregate per unit, filtering banned/hidden users
-    unit_standings = (
+    # Get all user scores with unit membership
+    user_rows = (
         db.session.query(
-            Units.id.label("unit_id"),
-            Units.name.label("name"),
-            Units.emblem_path.label("emblem_path"),
-            db.func.coalesce(db.func.sum(user_scores.columns.score), 0).label("score"),
-            db.func.count(UserUnits.user_id).label("member_count"),
+            UserUnits.unit_id,
+            Users.id.label("user_id"),
+            Users.name.label("user_name"),
+            db.func.coalesce(user_scores.columns.score, 0).label("score"),
         )
-        .join(UserUnits, Units.id == UserUnits.unit_id)
         .join(Users, Users.id == UserUnits.user_id)
         .outerjoin(user_scores, Users.id == user_scores.columns.user_id)
         .filter(Users.banned == False, Users.hidden == False)
-        .group_by(Units.id, Units.name, Units.emblem_path)
-        .order_by(db.text("score DESC"))
         .all()
     )
 
+    # Group by unit and find the leading team
+    unit_data = {}  # unit_id -> {members: [], max_score, leading_team}
+    for unit_id, user_id, user_name, score in user_rows:
+        score = int(score)
+        if unit_id not in unit_data:
+            unit_data[unit_id] = {"max_score": 0, "leading_team": "", "member_count": 0}
+        unit_data[unit_id]["member_count"] += 1
+        if score > unit_data[unit_id]["max_score"]:
+            unit_data[unit_id]["max_score"] = score
+            unit_data[unit_id]["leading_team"] = user_name
+
+    # Query unit metadata
+    units = Units.query.all()
+    unit_meta = {u.id: u for u in units}
+
+    # Build standings sorted by max score descending
+    unit_ids_sorted = sorted(
+        unit_data.keys(),
+        key=lambda uid: unit_data[uid]["max_score"],
+        reverse=True,
+    )
+
     standings = []
-    for pos, row in enumerate(unit_standings, 1):
+    for pos, uid in enumerate(unit_ids_sorted, 1):
+        unit = unit_meta.get(uid)
+        if not unit:
+            continue
         emblem_url = ""
-        if row.emblem_path:
-            emblem_url = url_for("views.files", path=row.emblem_path)
+        if unit.emblem_path:
+            emblem_url = url_for("views.files", path=unit.emblem_path)
         standings.append(
             {
                 "pos": pos,
-                "unit_id": row.unit_id,
-                "name": row.name,
+                "unit_id": uid,
+                "name": unit.name,
                 "emblem_url": emblem_url,
-                "score": int(row.score),
-                "member_count": row.member_count,
+                "score": unit_data[uid]["max_score"],
+                "member_count": unit_data[uid]["member_count"],
+                "leading_team": unit_data[uid]["leading_team"],
             }
         )
     return standings
 
 
-def get_unit_scoreboard_detail():
-    """Return per-unit solve history for charting cumulative scores over time."""
+def get_unit_scoreboard_detail(top_n=3):
+    """Return top N teams per unit with individual solve histories for charting.
+
+    Each unit contributes up to *top_n* lines on the chart.  Each line is a
+    team's cumulative score over time.  The emblem is shown only on the
+    leading team's line.
+    """
     freeze = get_config("freeze")
 
     # Get all solves with challenge values
@@ -144,53 +171,83 @@ def get_unit_scoreboard_detail():
         solves_q = solves_q.filter(Solves.date < unix_time_to_utc(freeze))
         awards_q = awards_q.filter(Awards.date < unix_time_to_utc(freeze))
 
-    # Map user_id -> unit info
-    user_unit_map = {}
-    unit_info = {}
+    # Map user_id -> (unit_id, user_name) and collect unit info
+    user_unit_map = {}  # user_id -> unit_id
+    user_names = {}     # user_id -> name
+    unit_info = {}      # unit_id -> {name, emblem_url}
     rows = (
-        db.session.query(UserUnits.user_id, Units.id, Units.name, Units.emblem_path)
+        db.session.query(
+            UserUnits.user_id, Users.name,
+            Units.id, Units.name, Units.emblem_path,
+        )
         .join(Units, Units.id == UserUnits.unit_id)
         .join(Users, Users.id == UserUnits.user_id)
         .filter(Users.banned == False, Users.hidden == False)
         .all()
     )
-    for user_id, unit_id, unit_name, emblem_path in rows:
+    for user_id, user_name, unit_id, unit_name, emblem_path in rows:
         user_unit_map[user_id] = unit_id
+        user_names[user_id] = user_name
         if unit_id not in unit_info:
             emblem_url = ""
             if emblem_path:
                 emblem_url = url_for("views.files", path=emblem_path)
             unit_info[unit_id] = {"name": unit_name, "emblem_url": emblem_url}
 
-    # Collect events per unit: list of {value, date}
-    unit_events = defaultdict(list)
+    # Collect events per user: list of (date, value)
+    user_events = defaultdict(list)
 
     for user_id, value, date in solves_q.all():
-        uid = user_unit_map.get(user_id)
-        if uid:
-            unit_events[uid].append({"value": int(value), "date": isoformat(date)})
+        if user_id in user_unit_map:
+            user_events[user_id].append((date, int(value)))
 
     for user_id, value, date in awards_q.all():
-        uid = user_unit_map.get(user_id)
-        if uid:
-            unit_events[uid].append({"value": int(value), "date": isoformat(date)})
+        if user_id in user_unit_map:
+            user_events[user_id].append((date, int(value)))
 
-    # Sort events by date and build response
+    # Compute total score per user
+    user_totals = {}
+    for user_id, events in user_events.items():
+        user_totals[user_id] = sum(v for _, v in events)
+
+    # Group users by unit and pick top N per unit
+    unit_members = defaultdict(list)  # unit_id -> [(user_id, total_score)]
+    for user_id, unit_id in user_unit_map.items():
+        unit_members[unit_id].append((user_id, user_totals.get(user_id, 0)))
+
+    # Build result: one entry per team line
+    # Structure: { position: { unit_name, unit_id, emblem_url, teams: [...] } }
     result = {}
-    for i, (unit_id, info) in enumerate(
-        sorted(
-            unit_info.items(),
-            key=lambda x: sum(e["value"] for e in unit_events.get(x[0], [])),
-            reverse=True,
-        )
-    ):
-        events = sorted(unit_events.get(unit_id, []), key=lambda e: e["date"])
+
+    # Sort units by their top member score descending
+    sorted_units = sorted(
+        unit_info.keys(),
+        key=lambda uid: max((s for _, s in unit_members.get(uid, [])), default=0),
+        reverse=True,
+    )
+
+    for i, unit_id in enumerate(sorted_units):
+        members = unit_members.get(unit_id, [])
+        # Sort members by score descending, take top N
+        top_members = sorted(members, key=lambda x: x[1], reverse=True)[:top_n]
+
+        teams = []
+        for rank, (user_id, total) in enumerate(top_members):
+            events = sorted(user_events.get(user_id, []), key=lambda e: e[0])
+            solves = [{"value": v, "date": isoformat(d)} for d, v in events]
+            teams.append({
+                "user_id": user_id,
+                "name": user_names.get(user_id, "Unknown"),
+                "score": total,
+                "is_leader": rank == 0,
+                "solves": solves,
+            })
+
         result[i + 1] = {
-            "id": unit_id,
-            "name": info["name"],
-            "emblem_url": info["emblem_url"],
-            "score": sum(e["value"] for e in events),
-            "solves": events,
+            "unit_id": unit_id,
+            "name": unit_info[unit_id]["name"],
+            "emblem_url": unit_info[unit_id]["emblem_url"],
+            "teams": teams,
         }
 
     return result

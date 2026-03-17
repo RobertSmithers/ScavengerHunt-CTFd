@@ -98,6 +98,13 @@
   margin-top: 2px;
 }
 
+.unit-leader {
+  font-size: 0.9rem;
+  color: #d4af37;
+  margin-top: 2px;
+  font-style: italic;
+}
+
 /* Score */
 .unit-score {
   font-size: 3.5rem;
