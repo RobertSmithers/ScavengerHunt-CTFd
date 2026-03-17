@@ -288,9 +288,13 @@
 							</a>
 						</td>
 						<td class="text-center" data-href="{{ url_for('admin.users_detail', user_id=member.id) }}">
+							{% if member.email %}
 							<a href="mailto:{{ member.email }}" target="_blank">
 								{{ member.email }}
 							</a>
+							{% else %}
+							-
+							{% endif %}
 						</td>
 						<td class="text-center" data-href="{{ url_for('admin.users_detail', user_id=member.id) }}">
 							{{ member.score }}

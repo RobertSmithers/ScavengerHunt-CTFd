@@ -323,7 +323,8 @@ def init_request_processors(app):
                         valid = False
 
                 if not valid:
-                    reset_token = generate_password_reset_token(user.email)
+                    token_subject = user.email or f"user_id:{user.id}"
+                    reset_token = generate_password_reset_token(token_subject)
                     session["reset_password"] = reset_token
 
                 return redirect(url_for("auth.reset_password", data=reset_token))

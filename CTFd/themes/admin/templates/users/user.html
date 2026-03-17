@@ -117,7 +117,9 @@
 				</h3>
 			{% endif %}
 
-		<h2 id="team-email" class="text-center">{{ user.email }}</h2>
+		{% if user.email %}
+			<h2 id="team-email" class="text-center">{{ user.email }}</h2>
+		{% endif %}
 		{% if user.oauth_id %}
 			<a href="https://majorleaguecyber.org/u/{{ user.name }}">
 				<h3><span class="badge badge-primary">Official</span></h3>
@@ -169,9 +171,11 @@
 			<a class="award-user text-dark">
 				<i class="btn-fa fas fa-trophy fa-2x px-2" data-toggle="tooltip" data-placement="top" title="Award User"></i>
 			</a>
+			{% if user.email %}
 			<a class="email-user text-dark">
 				<i class="btn-fa fas fa-envelope fa-2x px-2" data-toggle="tooltip" data-placement="top" title="Email User"></i>
 			</a>
+			{% endif %}
 			<a class="delete-user text-dark">
 				<i class="btn-fa fas fa-trash-alt fa-2x px-2" data-toggle="tooltip" data-placement="top" title="Delete User"></i>
 			</a>
