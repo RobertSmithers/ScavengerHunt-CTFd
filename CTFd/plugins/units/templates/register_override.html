@@ -42,6 +42,7 @@
             <div class="mb-3">
               <b>
                 {{ form.email.label(class="form-label") }}
+                <span class="text-danger">*</span>
               </b>
               {{ form.email(class="form-control", value=email, autocomplete="email") }}
               <small class="form-text text-muted">
@@ -57,6 +58,22 @@
               {{ form.password(class="form-control", value=password, autocomplete="new-password") }}
               <small class="form-text text-muted">
                 {% trans %}Password used to log into your account{% endtrans %}
+              </small>
+            </div>
+
+            <div class="mb-3">
+              <b>
+                <label class="form-label" for="unit_id">Unit</label>
+                <span class="text-danger">*</span>
+              </b>
+              <select class="form-control" id="unit_id" name="unit_id" required>
+                <option value="" disabled selected>-- Select your unit --</option>
+                {% for unit in get_units() %}
+                  <option value="{{ unit.id }}">{{ unit.name }}</option>
+                {% endfor %}
+              </select>
+              <small class="form-text text-muted">
+                Select your unit
               </small>
             </div>
 

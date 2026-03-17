@@ -28,6 +28,10 @@ fi
 # Initialize database
 flask db upgrade
 
+# Seed challenges (idempotent — skips existing)
+echo "Seeding challenges..."
+python seed.py
+
 # Start CTFd
 echo "Starting CTFd"
 exec gunicorn 'CTFd:create_app()' \
