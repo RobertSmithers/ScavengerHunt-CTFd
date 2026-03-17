@@ -84,5 +84,8 @@ flask_profiler.sql
 # Environment
 .env
 
+# Golden egg secrets
+CTFd/seeds/golden_eggs.json
+
 # Logs
 *.txti
