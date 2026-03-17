@@ -1,7 +1,7 @@
 from flask_babel import lazy_gettext as _l
 from wtforms import PasswordField, StringField
 from wtforms.fields.html5 import EmailField
-from wtforms.validators import InputRequired
+from wtforms.validators import InputRequired, Optional
 
 from CTFd.forms import BaseForm
 from CTFd.forms.fields import SubmitField
@@ -34,7 +34,7 @@ def RegistrationForm(*args, **kwargs):
         email = EmailField(
             _l("Email"),
             description="Never shown to the public",
-            validators=[InputRequired()],
+            validators=[Optional()],
         )
         password = PasswordField(
             _l("Password"),

@@ -339,5 +339,52 @@ your Challenge Type.
 CHALLENGE_CLASSES = {"standard": CTFdStandardChallenge}
 
 
+class CTFdUniqueFlagChallenge(CTFdStandardChallenge):
+    """Challenge type where each flag can only be redeemed once.
+
+    After a team submits a correct flag, no other team may use the same
+    flag text.  All other behaviour is identical to the standard type.
+    """
+
+    id = "unique_flags"
+    name = "unique_flags"
+
+    @classmethod
+    def attempt(cls, challenge, request):
+        from CTFd.plugins.flags import FlagException, get_flag_class
+
+        data = request.form or request.get_json()
+        submission = data["submission"].strip()
+
+        flags = Flags.query.filter_by(challenge_id=challenge.id).all()
+
+        # Check if the flag is correct first
+        matched = False
+        for flag in flags:
+            try:
+                if get_flag_class(flag.type).compare(flag, submission):
+                    matched = True
+                    break
+            except FlagException as e:
+                return ChallengeResponse(status="incorrect", message=str(e))
+
+        if not matched:
+            return ChallengeResponse(status="incorrect", message="Incorrect")
+
+        # Flag matched — check if another team already used it
+        prior = Solves.query.filter_by(challenge_id=challenge.id).all()
+        for solve in prior:
+            if solve.provided and solve.provided.strip().lower() == submission.lower():
+                return ChallengeResponse(
+                    status="incorrect",
+                    message="This code has already been redeemed by another team.",
+                )
+
+        return ChallengeResponse(status="correct", message="Correct")
+
+
+CHALLENGE_CLASSES["unique_flags"] = CTFdUniqueFlagChallenge
+
+
 def load(app):
     register_plugin_assets_directory(app, base_path="/plugins/challenges/assets/")

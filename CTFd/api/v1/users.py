@@ -167,7 +167,7 @@ class UserList(Resource):
         db.session.add(response.data)
         db.session.commit()
 
-        if request.args.get("notify"):
+        if request.args.get("notify") and response.data.email:
             name = response.data.name
             email = response.data.email
             password = req.get("password")
@@ -523,6 +523,15 @@ class UserEmails(Resource):
         if not text:
             return (
                 {"success": False, "errors": {"text": ["Email text cannot be empty"]}},
+                400,
+            )
+
+        if not user.email:
+            return (
+                {
+                    "success": False,
+                    "errors": {"": ["This user does not have an email address"]},
+                },
                 400,
             )
 

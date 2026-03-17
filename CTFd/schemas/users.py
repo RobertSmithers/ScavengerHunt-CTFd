@@ -31,10 +31,10 @@ class UserSchema(ma.ModelSchema):
     email = field_for(
         Users,
         "email",
-        allow_none=False,
+        allow_none=True,
         validate=[
             validate.Email("Emails must be a properly formatted email address"),
-            validate.Length(min=1, max=128, error="Emails must not be empty"),
+            validate.Length(max=128, error="Emails must be at most 128 characters"),
         ],
     )
     website = field_for(
@@ -105,6 +105,9 @@ class UserSchema(ma.ModelSchema):
         if email is None:
             return
         email = email.strip()
+        if email == "":
+            data["email"] = None
+            return
 
         existing_user = Users.query.filter_by(email=email).first()
         current_user = get_current_user()

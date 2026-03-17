@@ -38,6 +38,9 @@ auth = Blueprint("auth", __name__)
 @auth.route("/confirm/<data>", methods=["POST", "GET"])
 @ratelimit(method="POST", limit=10, interval=60)
 def confirm(data=None):
+    if get_config("verify_emails") is False:
+        return redirect(url_for("challenges.listing"))
+
     # If we can't send mails our behavior depends on verify_emails
     if not can_send_mail():
         if get_config("verify_emails") is False:
@@ -98,10 +101,14 @@ def confirm(data=None):
     user = Users.query.filter_by(id=session["id"]).first_or_404()
     if user.verified:
         return redirect(url_for("views.settings"))
+    if not user.email:
+        return redirect(url_for("challenges.listing"))
 
     if data is None:
         if request.method == "POST":
             # User wants to resend their confirmation email
+            if not user.email:
+                return redirect(url_for("challenges.listing"))
             email.verify_email_address(user.email)
             log(
                 "registrations",
@@ -132,18 +139,24 @@ def reset_password(data=None):
 
     if data is not None:
         try:
-            email_address = verify_reset_password_token(data)
+            reset_subject = verify_reset_password_token(data)
         except (UserResetPasswordTokenInvalidException):
             return render_template(
                 "reset_password.html",
                 errors=["Your reset link is invalid, please generate a new one"],
             )
 
+        if isinstance(reset_subject, str) and reset_subject.startswith("user_id:"):
+            user_id = int(reset_subject.split(":", 1)[1])
+            user = Users.query.filter_by(id=user_id).first_or_404()
+        else:
+            email_address = reset_subject
+            user = Users.query.filter_by(email=email_address).first_or_404()
+
         if request.method == "GET":
             return render_template("reset_password.html", mode="set")
         if request.method == "POST":
             password = request.form.get("password", "").strip()
-            user = Users.query.filter_by(email=email_address).first_or_404()
             if user.oauth_id:
                 return render_template(
                     "reset_password.html",
@@ -181,7 +194,8 @@ def reset_password(data=None):
                 name=user.name,
             )
             db.session.close()
-            email.password_change_alert(user.email)
+            if user.email:
+                email.password_change_alert(user.email)
             return redirect(url_for("auth.login"))
 
     if request.method == "POST":
@@ -252,6 +266,8 @@ def register():
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         email_address = request.form.get("email", "").strip().lower()
+        if email_address == "":
+            email_address = None
         password = request.form.get("password", "").strip()
 
         website = request.form.get("website")
@@ -264,11 +280,13 @@ def register():
         names = (
             Users.query.add_columns(Users.name, Users.id).filter_by(name=name).first()
         )
-        emails = (
-            Users.query.add_columns(Users.email, Users.id)
-            .filter_by(email=email_address)
-            .first()
-        )
+        emails = None
+        if email_address:
+            emails = (
+                Users.query.add_columns(Users.email, Users.id)
+                .filter_by(email=email_address)
+                .first()
+            )
         pass_short = len(password) == 0
         pass_long = len(password) > 128
         valid_email = validators.validate_email(email_address)
@@ -330,11 +348,11 @@ def register():
             else:
                 valid_bracket = True
 
-        if not valid_email:
-            errors.append(_l("Please enter a valid email address"))
-        if email.check_email_is_whitelisted(email_address) is False:
+        if email_address and not valid_email:
+            errors.append(_l("Email address is invalid"))
+        if email_address and email.check_email_is_whitelisted(email_address) is False:
             errors.append(_l("Your email address is not from an allowed domain"))
-        if email.check_email_is_blacklisted(email_address) is True:
+        if email_address and email.check_email_is_blacklisted(email_address) is True:
             errors.append(_l("Your email address is not from an allowed domain"))
         if names:
             errors.append(_l("That user name is already taken"))
@@ -379,6 +397,8 @@ def register():
                     password=password,
                     bracket_id=bracket_id,
                 )
+                if (not get_config("verify_emails")) or (not email_address):
+                    user.verified = True
 
                 if website:
                     user.website = website
@@ -407,7 +427,7 @@ def register():
 
                 if config.can_send_mail() and get_config(
                     "verify_emails"
-                ):  # Confirming users is enabled and we can send email.
+                ) and user.email:  # Confirming users is enabled and we can send email.
                     log(
                         "registrations",
                         format="[{date}] {ip} - {name} registered (UNCONFIRMED) with {email}",
@@ -419,7 +439,7 @@ def register():
                     return redirect(url_for("auth.confirm"))
                 else:  # Don't care about confirming users
                     if (
-                        config.can_send_mail()
+                        config.can_send_mail() and user.email
                     ):  # We want to notify the user that they have registered.
                         email.successful_registration_notification(user.email)
 
