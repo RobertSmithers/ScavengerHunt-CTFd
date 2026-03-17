@@ -214,6 +214,7 @@ class RankingChallenge(SeedChallenge):
         cls,
         category,
         placements,
+        name_prefix="",
         tags=None,
         max_attempts=0,
         flag_count=1,
@@ -227,6 +228,8 @@ class RankingChallenge(SeedChallenge):
             category:     Challenge category / event name shown in the UI.
             placements:   Iterable of ``(place, value)`` tuples.
                           Example: ``[(1, 100), (2, 75), (3, 50), (4, 25)]``
+            name_prefix:  Optional prefix prepended to each challenge name
+                          (e.g. ``"Heat 1 - "`` → ``"Heat 1 - 1st Place"``).
             tags:         Tag strings applied to every generated challenge.
             max_attempts: Max submission attempts (0 = unlimited).
             flag_count:   Flags generated per placement challenge (default 1).
@@ -237,7 +240,7 @@ class RankingChallenge(SeedChallenge):
         return [
             cls(
                 placement=place,
-                name=f"{ordinal(place)} Place",
+                name=f"{name_prefix}{ordinal(place)} Place",
                 category=category,
                 value=value,
                 flag_count=flag_count,
@@ -338,9 +341,19 @@ class StaticChallenge(SeedChallenge):
     Use for trivia, scavenger hunts, participation check-ins, or anything
     that doesn't fit the ranking / tournament templates.  Pass your own
     ``description`` — no auto-generation is performed.
+
+    If *answer* is provided, it is used as the literal flag instead of
+    generating one via HMAC.
     """
 
-    pass
+    def __init__(self, answer=None, **kwargs):
+        self._answer = answer
+        super().__init__(**kwargs)
+
+    def generate_flag(self, index, secret_key):
+        if self._answer is not None:
+            return self._answer
+        return super().generate_flag(index, secret_key)
 
 
 class ScavengerHuntChallenge(SeedChallenge):
@@ -420,7 +433,7 @@ class CheckInChallenge(SeedChallenge):
     rather than a generated one.
     """
 
-    HARDCODED_FLAG = "GW26{ready_to_win}"
+    HARDCODED_FLAG = "GW26{release_the_spiders}"
 
     def __init__(self, name, category, description, **kwargs):
         kwargs.setdefault("value", 0)
@@ -465,3 +478,18 @@ def set_prerequisites(prerequisite_name, dependents):
         prereq.id,
         count,
     )
+
+
+def delete_categories(categories):
+    """Delete all challenges whose category is in *categories*.
+
+    Related Flags, Tags, and ChallengeFiles are removed automatically via
+    ON DELETE CASCADE.  Returns the number of challenges deleted.
+    """
+    challenges = Challenges.query.filter(Challenges.category.in_(categories)).all()
+    count = len(challenges)
+    for chal in challenges:
+        db.session.delete(chal)
+    db.session.commit()
+    log.info("DELETED %d challenges in categories: %s", count, ", ".join(categories))
+    return count
