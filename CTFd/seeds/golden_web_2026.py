@@ -11,7 +11,9 @@ level so they can be imported and inspected without touching the DB.
 Additionally, these events are idempotent, so this script can be safely re-run.
 """
 
+import json
 import logging
+from pathlib import Path
 
 from collections import OrderedDict
 
@@ -69,6 +71,16 @@ LOCKED_CATEGORIES = set()
 # LOCKED_CATEGORIES.add("Spider Egg Hunt - All Morning")
 
 
+# ── Golden egg answers (loaded from external secrets file) ───────────────────
+_GOLDEN_EGGS_PATH = Path(__file__).parent / "golden_eggs.json"
+if _GOLDEN_EGGS_PATH.exists():
+    with open(_GOLDEN_EGGS_PATH) as _f:
+        GOLDEN_EGGS = json.load(_f)
+else:
+    log.warning("golden_eggs.json not found — golden eggs will have no answers")
+    GOLDEN_EGGS = []
+
+
 # ── Gate challenge (must be first) ───────────────────────────────────────────
 
 CHECK_IN = CheckInChallenge(
@@ -94,7 +106,7 @@ CHALLENGES = [
 		tags=["scavenger", "hunt"],
 	),
 
-	# Golden Eggs — puzzles done outside CTFd, answers entered here
+	# Golden Eggs — puzzles done outside CTFd, answers loaded from golden_eggs.json
 	*[
 		StaticChallenge(
 			name=f"Golden Egg {i}",
@@ -102,24 +114,11 @@ CHALLENGES = [
 			description=(
 				"Solve the puzzle on this Golden Egg and enter the answer to earn your points."
 			),
-			answer=answer,
+			answer=egg["answer"],
 			value=30,
 			tags=["scavenger", "hunt", "golden"],
 		)
-		for i, answer in enumerate([
-			"GW26{signed_b1ts}",   			# Golden Egg 1 # ASL images
-			"GW26{r3morseful}",     		# Golden Egg 2 # --. .-- ..--- -.... { .-. ...-- -- --- .-. ... . ..-. ..- .-.. }
-			"GW26{codebr3aker}",     		# Golden Egg 3 # LS26{jvbchf3gocf} # Caesar cipher, key=spider, n=4
-			"GW26{peru}",     				# Golden Egg 4 # Which country would you find this?  Answer in the format: GW26{answer_here} (picture of Machu Picchu)
-			"GW26{thirty_two}",     		# Golden Egg 5 # How many rectangles are in this image? Answer in the format: GW26{twelve} if the answer is 12 (picture of many rectangles overlapping)
-			"GW26{d61ww26d1w}",     		# Golden Egg 6 # ASL images
-			"GW26{twenty_seven}",     		# Golden Egg 7 # How many triangles are in this image? Answer in the format: GW26{twelve} if the answer is 12 (picture of many triangles overlapping)
-			"GW26{w4s_it_wor7h_it}",     	# Golden Egg 8 # Stickman cipher images
-			"GW26{lots_0f_d0ts}",     		# Golden Egg 9 --. .-- ..--- -.... { .-.. --- - ... ..--.- ----- ..-. ..--.- -.. ----- - ... } 
-			"GW26{d1d_you_s1gn_it}",     	# Golden Egg 10 # ASL image
-			"GW26{chichen_itza}",     		# Golden Egg 11 # What is the name of this pyramid? Answer in the format: GW26{answer_here} (picture of Chichen Itza)
-			"GW26{3387}",     				# Golden Egg 12 #(92*(2**(4-(8/(1+1)+3))*100)-18)*3-9 Answer in the format: GW26{1234}
-		], start=1)
+		for i, egg in enumerate(GOLDEN_EGGS, start=1)
 	],
 
     *RankingChallenge.for_event(
@@ -128,7 +127,7 @@ CHALLENGES = [
         tags=["trivia", "ranking"],
 	),
       
-	  *TournamentChallenge.bracket(
+	*TournamentChallenge.bracket(
 		category="Flag Football Tournament - 0900",
 		participants=16,
 		base_value=50,
@@ -139,7 +138,8 @@ CHALLENGES = [
 	# 0915
     *RankingChallenge.for_event(
         category="The MAV Demo - 0915",
-        placements=generate_podium_points(10, first=500, last=25, curve=0.5),
+        placements=generate_podium_points(10, first=200, last=25, curve=0.3),
+        flag_count=5,
         tags=["fitness", "ranking"],
     ),
 
@@ -246,12 +246,14 @@ CHALLENGES = [
 
 	# 1200
 	StaticChallenge(
-		name="Completion Check-in",
+		name="Awards Ceremony Check-in",
 		category="Awards Ceremony - 1200",
+		challenge_type="standard",
 		description=(
 			"To receive these points, check in at the main tent and then return to your formation."
 			" This challenge closes at 1200, after which point no more submissions will be accepted!"
 		),
+        answer="GW26{final_countdown}",
 		value=100,
 		tags=["check-in", "awards"],
 	),

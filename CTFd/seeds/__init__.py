@@ -83,17 +83,19 @@ class SeedChallenge:
         files=None,
         state="visible",
         requirements=None,
+        challenge_type="unique_flags",
     ):
         self.name = name
         self.category = category
         self.value = value
-        self.description = description or self.build_description()
         self.flag_count = flag_count
         self.max_attempts = max_attempts
         self.tags = tags or []
         self.files = files or []
         self.state = state
         self.requirements = requirements
+        self.challenge_type = challenge_type
+        self.description = description or self.build_description()
 
     def build_description(self) -> str:
         """Override in subclasses to auto-generate a description."""
@@ -140,7 +142,7 @@ class SeedChallenge:
             value=self.value,
             description=self.description,
             max_attempts=self.max_attempts,
-            type="standard",
+            type=self.challenge_type,
             state=self.state,
             requirements=self.requirements,
             position=position,
@@ -167,7 +169,7 @@ class SeedChallenge:
                 ChallengeFiles(challenge_id=challenge.id, location=file_loc)
             )
 
-        db.session.bulk_save_objects(related)
+        db.session.add_all(related)
         log.info(
             "STAGE  %s (id=%d, flags=%d, tags=%d)",
             self.name,
@@ -201,12 +203,23 @@ class RankingChallenge(SeedChallenge):
         "After placing {ordinal} in this event, your event lead will "
         "provide a code to you. Submit that code here to earn your points."
     )
+    MULTI_DESCRIPTION_TEMPLATE = (
+        "This event runs for {iterations} iterations. After placing "
+        "{ordinal} in any iteration, your event lead will provide a "
+        "unique code. Submit that code here to earn your points. "
+        "You may earn points for this placement up to {iterations} times."
+    )
 
     def __init__(self, placement, **kwargs):
         self.placement = placement
         super().__init__(**kwargs)
 
     def build_description(self):
+        if self.flag_count > 1:
+            return self.MULTI_DESCRIPTION_TEMPLATE.format(
+                ordinal=ordinal(self.placement),
+                iterations=self.flag_count,
+            )
         return self.DESCRIPTION_TEMPLATE.format(ordinal=ordinal(self.placement))
 
     @classmethod
@@ -439,6 +452,7 @@ class CheckInChallenge(SeedChallenge):
         kwargs.setdefault("value", 0)
         kwargs.setdefault("flag_count", 1)
         kwargs.setdefault("max_attempts", 0)
+        kwargs.setdefault("challenge_type", "standard")
         super().__init__(
             name=name,
             category=category,
@@ -467,7 +481,8 @@ def set_prerequisites(prerequisite_name, dependents):
         chal = Challenges.query.filter_by(name=name, category=category).first()
         if chal is None:
             continue
-        if chal.requirements and chal.requirements.get("prerequisites"):
+        existing = (chal.requirements or {}).get("prerequisites", [])
+        if existing == [prereq.id]:
             continue
         chal.requirements = {"prerequisites": [prereq.id]}
         count += 1
