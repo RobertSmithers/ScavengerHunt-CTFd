@@ -17,14 +17,14 @@ if [[ $# -eq 0 ]]; then
   echo "Deleting ALL challenges, flags, and tags..."
   docker compose -f "$COMPOSE_FILE" exec db \
     mariadb -u ctfd -pctfd ctfd -e \
-    "DELETE FROM flags; DELETE FROM tags; DELETE FROM challenges WHERE type='standard';"
+    "DELETE FROM flags; DELETE FROM tags; DELETE FROM challenges;"
 else
   for category in "$@"; do
     echo "Deleting category: $category"
     # Flags and tags cascade-delete automatically via FK constraints
     docker compose -f "$COMPOSE_FILE" exec db \
       mariadb -u ctfd -pctfd ctfd -e \
-      "DELETE FROM challenges WHERE type='standard' AND category='${category//\'/\\\'}';"
+      "DELETE FROM challenges WHERE category='${category//\'/\\\'}';"
   done
 fi
 
