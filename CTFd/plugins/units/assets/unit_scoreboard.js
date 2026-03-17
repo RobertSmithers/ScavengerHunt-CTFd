@@ -39,54 +39,64 @@
 
     for (var i = 0; i < keys.length; i++) {
       var unit = places[keys[i]];
-      var solves = unit.solves || [];
-      var cumulative = [];
-      var runningTotal = 0;
+      var teams = unit.teams || [];
+      var unitColor = COLORS[i % COLORS.length];
 
-      for (var j = 0; j < solves.length; j++) {
-        runningTotal += solves[j].value;
-        cumulative.push([new Date(solves[j].date), runningTotal]);
-      }
+      for (var t = 0; t < teams.length; t++) {
+        var team = teams[t];
+        var solves = team.solves || [];
+        var cumulative = [];
+        var runningTotal = 0;
 
-      legend.push(unit.name);
-
-      var color = COLORS[i % COLORS.length];
-
-      var hasEmblem = !!unit.emblem_url;
-      var dataWithSymbols = [];
-      for (var k = 0; k < cumulative.length; k++) {
-        var isLast = k === cumulative.length - 1;
-        var point = { value: cumulative[k] };
-        if (isLast && hasEmblem) {
-          point.symbol = "image://" + unit.emblem_url;
-          point.symbolSize = 32;
-        } else {
-          point.symbol = "none";
-          point.symbolSize = 0;
+        for (var j = 0; j < solves.length; j++) {
+          runningTotal += solves[j].value;
+          cumulative.push([new Date(solves[j].date), runningTotal]);
         }
-        dataWithSymbols.push(point);
-      }
 
-      series.push({
-        name: unit.name,
-        type: "line",
-        smooth: true,
-        symbol: "none",
-        symbolSize: 0,
-        lineStyle: { color: color, width: 3 },
-        itemStyle: { color: color, borderColor: "#0a0a1a", borderWidth: 2 },
-        emphasis: {
-          itemStyle: { borderColor: color, borderWidth: 3 },
-          lineStyle: { width: 5 }
-        },
-        data: dataWithSymbols
-      });
+        // Use unit name + team name as the series label
+        var seriesName = unit.name + " — " + team.name;
+        legend.push(seriesName);
+
+        // Fade non-leader lines (lower opacity, thinner)
+        var lineWidth = team.is_leader ? 3 : 1.5;
+        var lineOpacity = team.is_leader ? 1 : 0.5;
+
+        var hasEmblem = team.is_leader && !!unit.emblem_url;
+        var dataWithSymbols = [];
+        for (var k = 0; k < cumulative.length; k++) {
+          var isLast = k === cumulative.length - 1;
+          var point = { value: cumulative[k] };
+          if (isLast && hasEmblem) {
+            point.symbol = "image://" + unit.emblem_url;
+            point.symbolSize = 32;
+          } else {
+            point.symbol = "none";
+            point.symbolSize = 0;
+          }
+          dataWithSymbols.push(point);
+        }
+
+        series.push({
+          name: seriesName,
+          type: "line",
+          smooth: true,
+          symbol: "none",
+          symbolSize: 0,
+          lineStyle: { color: unitColor, width: lineWidth, opacity: lineOpacity },
+          itemStyle: { color: unitColor, borderColor: "#0a0a1a", borderWidth: 2 },
+          emphasis: {
+            itemStyle: { borderColor: unitColor, borderWidth: 3 },
+            lineStyle: { width: 5, opacity: 1 }
+          },
+          data: dataWithSymbols
+        });
+      }
     }
 
     var option = {
       backgroundColor: "transparent",
       title: {
-        text: "Score Progression",
+        text: "Leading Teams",
         left: "center",
         textStyle: { color: "#d4af37", fontSize: 18, fontWeight: 700 }
       },
@@ -222,6 +232,7 @@
       '<div class="unit-info">' +
         '<div class="unit-name">' + escapeHtml(unit.name) + "</div>" +
         '<div class="unit-members">' + unit.member_count + " member" + (unit.member_count !== 1 ? "s" : "") + "</div>" +
+        (unit.leading_team ? '<div class="unit-leader">Leading: ' + escapeHtml(unit.leading_team) + "</div>" : "") +
       "</div>" +
       '<div class="unit-score" data-score="' + unit.score + '">' + formatScore(unit.score) + "</div>";
 
@@ -239,6 +250,19 @@
 
     var membersEl = row.querySelector(".unit-members");
     membersEl.textContent = unit.member_count + " member" + (unit.member_count !== 1 ? "s" : "");
+
+    var leaderEl = row.querySelector(".unit-leader");
+    if (unit.leading_team) {
+      if (leaderEl) {
+        leaderEl.textContent = "Leading: " + unit.leading_team;
+      } else {
+        var infoEl = row.querySelector(".unit-info");
+        var newLeader = document.createElement("div");
+        newLeader.className = "unit-leader";
+        newLeader.textContent = "Leading: " + unit.leading_team;
+        infoEl.appendChild(newLeader);
+      }
+    }
 
     var scoreEl = row.querySelector(".unit-score");
     var oldScore = prev ? prev.score : parseInt(scoreEl.dataset.score, 10) || 0;
