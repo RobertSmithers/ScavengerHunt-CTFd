@@ -101,7 +101,7 @@ CHALLENGES = [
 	*ScavengerHuntChallenge.hunt(
 		category="Spider Egg Hunt - All Morning",
 		count=80,
-		value=10,
+		value=15,
 		label="Egg",
 		tags=["scavenger", "hunt"],
 	),
@@ -115,7 +115,7 @@ CHALLENGES = [
 				"Solve the puzzle on this Golden Egg and enter the answer to earn your points."
 			),
 			answer=egg["answer"],
-			value=30,
+			value=50,
 			tags=["scavenger", "hunt", "golden"],
 		)
 		for i, egg in enumerate(GOLDEN_EGGS, start=1)
@@ -136,12 +136,12 @@ CHALLENGES = [
 	),
 
 	# 0915
-    *RankingChallenge.for_event(
-        category="The MAV Demo - 0915",
-        placements=generate_podium_points(10, first=200, last=25, curve=0.3),
-        flag_count=5,
-        tags=["fitness", "ranking"],
-    ),
+    # *RankingChallenge.for_event(
+    #     category="The MAV Demo - 0915",
+    #     placements=generate_podium_points(10, first=200, last=25, curve=0.3),
+    #     flag_count=5,
+    #     tags=["fitness", "ranking"],
+    # ),
 
 	# 0930
     *TournamentChallenge.bracket(
@@ -153,12 +153,16 @@ CHALLENGES = [
     ),
 
 	# 0945
-
-	# 1000
-	*RankingChallenge.for_event(
-		category="Murph - 1000",
-		placements=generate_podium_points(10, first=500, last=100, curve=0.5),
-		tags=["fitness", "ranking"],
+    StaticChallenge(
+		name="Winner",
+		category="Shirt's Circuit - 0945",
+		challenge_type="standard",
+		description=(
+			"After you win a head to head (1 team vs 1 team) matchup in this event, check in with your event lead to receive the code."
+               "Note: You will only earn points for your first win/no points for reattempting unless you have not won yet"
+		),
+		value=100,
+		flag_count=30,
 	),
 
 	# 1030
@@ -177,6 +181,19 @@ CHALLENGES = [
 	),
 
 	# 1100
+	StaticChallenge(
+		name="Winner",
+		category="The MAV Demo - 1100",
+		challenge_type="standard",
+		description=(
+			"To claim these points, you must move the MAV a certain distance using pure strength"
+               "Points are awarded for first-time completion only"
+		),
+		value=100,
+		flag_count=30,
+		tags=["fitness", "solo"],
+	),
+
 	*RankingChallenge.for_event(
 		category="Keyboard Warrior Relay - 1100",
 		placements=PODIUM_4,
