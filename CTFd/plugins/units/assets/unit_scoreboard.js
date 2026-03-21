@@ -232,7 +232,7 @@
       '<div class="unit-info">' +
         '<div class="unit-name">' + escapeHtml(unit.name) + "</div>" +
         '<div class="unit-members">' + unit.member_count + " member" + (unit.member_count !== 1 ? "s" : "") + "</div>" +
-        (unit.leading_team ? '<div class="unit-leader">Leading: ' + escapeHtml(unit.leading_team) + "</div>" : "") +
+        (unit.leading_team ? '<div class="unit-leader">Leading Team: ' + escapeHtml(unit.leading_team) + "</div>" : "") +
       "</div>" +
       '<div class="unit-score" data-score="' + unit.score + '">' + formatScore(unit.score) + "</div>";
 
@@ -254,12 +254,12 @@
     var leaderEl = row.querySelector(".unit-leader");
     if (unit.leading_team) {
       if (leaderEl) {
-        leaderEl.textContent = "Leading: " + unit.leading_team;
+        leaderEl.textContent = "Leading Team: " + unit.leading_team;
       } else {
         var infoEl = row.querySelector(".unit-info");
         var newLeader = document.createElement("div");
         newLeader.className = "unit-leader";
-        newLeader.textContent = "Leading: " + unit.leading_team;
+        newLeader.textContent = "Leading Team: " + unit.leading_team;
         infoEl.appendChild(newLeader);
       }
     }

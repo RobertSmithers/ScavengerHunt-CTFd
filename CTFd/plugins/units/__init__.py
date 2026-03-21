@@ -7,7 +7,7 @@ from werkzeug.utils import secure_filename
 from collections import defaultdict
 
 from CTFd.cache import cache
-from CTFd.models import Awards, Challenges, Solves, Users, db
+from CTFd.models import Awards, Challenges, Solves, Teams, Users, db
 from CTFd.plugins import (
     bypass_csrf_protection,
     override_template,
@@ -34,7 +34,7 @@ def get_units():
 
 
 def get_unit_scoreboard_data():
-    """Build unit scoreboard: best individual member score per unit."""
+    """Build unit scoreboard: best team score per unit."""
     # Solve scores per user
     scores = (
         db.session.query(
@@ -79,30 +79,56 @@ def get_unit_scoreboard_data():
         .subquery()
     )
 
-    # Get all user scores with unit membership
+    # Get all user scores with unit and team membership
     user_rows = (
         db.session.query(
             UserUnits.unit_id,
             Users.id.label("user_id"),
-            Users.name.label("user_name"),
+            Users.team_id,
+            Teams.name.label("team_name"),
             db.func.coalesce(user_scores.columns.score, 0).label("score"),
         )
         .join(Users, Users.id == UserUnits.user_id)
+        .outerjoin(Teams, Teams.id == Users.team_id)
         .outerjoin(user_scores, Users.id == user_scores.columns.user_id)
         .filter(Users.banned == False, Users.hidden == False)
         .all()
     )
 
-    # Group by unit and find the leading team
-    unit_data = {}  # unit_id -> {members: [], max_score, leading_team}
-    for unit_id, user_id, user_name, score in user_rows:
+    # Aggregate scores by team within each unit
+    # team_key = (unit_id, team_id)
+    team_scores = {}  # (unit_id, team_id) -> {score, team_name}
+    unit_members = defaultdict(int)  # unit_id -> member_count
+
+    for unit_id, user_id, team_id, team_name, score in user_rows:
         score = int(score)
+        unit_members[unit_id] += 1
+
+        if team_id is None:
+            # User not on a team; treat them as their own entry
+            key = (unit_id, f"user_{user_id}")
+            if key not in team_scores:
+                team_scores[key] = {"score": 0, "team_name": team_name or "Unaffiliated"}
+            team_scores[key]["score"] += score
+        else:
+            key = (unit_id, team_id)
+            if key not in team_scores:
+                team_scores[key] = {"score": 0, "team_name": team_name or "Unknown"}
+            team_scores[key]["score"] += score
+
+    # Find the leading team per unit
+    unit_data = {}  # unit_id -> {max_score, leading_team, member_count}
+    for (unit_id, _team_key), info in team_scores.items():
         if unit_id not in unit_data:
-            unit_data[unit_id] = {"max_score": 0, "leading_team": "", "member_count": 0}
-        unit_data[unit_id]["member_count"] += 1
-        if score > unit_data[unit_id]["max_score"]:
-            unit_data[unit_id]["max_score"] = score
-            unit_data[unit_id]["leading_team"] = user_name
+            unit_data[unit_id] = {"max_score": 0, "leading_team": "", "member_count": unit_members[unit_id]}
+        if info["score"] > unit_data[unit_id]["max_score"]:
+            unit_data[unit_id]["max_score"] = info["score"]
+            unit_data[unit_id]["leading_team"] = info["team_name"]
+
+    # Include units with members but no scores yet
+    for unit_id, count in unit_members.items():
+        if unit_id not in unit_data:
+            unit_data[unit_id] = {"max_score": 0, "leading_team": "", "member_count": count}
 
     # Query unit metadata
     units = Units.query.all()
@@ -138,7 +164,7 @@ def get_unit_scoreboard_data():
 
 
 def get_unit_scoreboard_detail(top_n=3):
-    """Return top N teams per unit with individual solve histories for charting.
+    """Return top N teams per unit with solve histories for charting.
 
     Each unit contributes up to *top_n* lines on the chart.  Each line is a
     team's cumulative score over time.  The emblem is shown only on the
@@ -171,23 +197,28 @@ def get_unit_scoreboard_detail(top_n=3):
         solves_q = solves_q.filter(Solves.date < unix_time_to_utc(freeze))
         awards_q = awards_q.filter(Awards.date < unix_time_to_utc(freeze))
 
-    # Map user_id -> (unit_id, user_name) and collect unit info
-    user_unit_map = {}  # user_id -> unit_id
-    user_names = {}     # user_id -> name
-    unit_info = {}      # unit_id -> {name, emblem_url}
+    # Map user_id -> (unit_id, team_id, team_name) and collect unit info
+    user_unit_map = {}   # user_id -> unit_id
+    user_team_map = {}   # user_id -> team_id
+    team_names = {}      # team_id -> name
+    unit_info = {}       # unit_id -> {name, emblem_url}
     rows = (
         db.session.query(
-            UserUnits.user_id, Users.name,
-            Units.id, Units.name, Units.emblem_path,
+            UserUnits.user_id, Users.name, Users.team_id,
+            Teams.name.label("team_name"),
+            Units.id, Units.name.label("unit_name"), Units.emblem_path,
         )
         .join(Units, Units.id == UserUnits.unit_id)
         .join(Users, Users.id == UserUnits.user_id)
+        .outerjoin(Teams, Teams.id == Users.team_id)
         .filter(Users.banned == False, Users.hidden == False)
         .all()
     )
-    for user_id, user_name, unit_id, unit_name, emblem_path in rows:
+    for user_id, user_name, team_id, team_name, unit_id, unit_name, emblem_path in rows:
         user_unit_map[user_id] = unit_id
-        user_names[user_id] = user_name
+        user_team_map[user_id] = team_id
+        if team_id is not None:
+            team_names[team_id] = team_name
         if unit_id not in unit_info:
             emblem_url = ""
             if emblem_path:
@@ -205,39 +236,54 @@ def get_unit_scoreboard_detail(top_n=3):
         if user_id in user_unit_map:
             user_events[user_id].append((date, int(value)))
 
-    # Compute total score per user
-    user_totals = {}
+    # Aggregate events by team within each unit
+    # team_key = (unit_id, team_id)
+    team_events = defaultdict(list)   # (unit_id, team_key) -> [(date, value)]
+    team_totals = defaultdict(int)    # (unit_id, team_key) -> total score
+    team_key_names = {}               # (unit_id, team_key) -> display name
+
     for user_id, events in user_events.items():
-        user_totals[user_id] = sum(v for _, v in events)
+        unit_id = user_unit_map[user_id]
+        team_id = user_team_map.get(user_id)
+        if team_id is not None:
+            key = (unit_id, team_id)
+            display_name = team_names.get(team_id, "Unknown")
+        else:
+            key = (unit_id, f"user_{user_id}")
+            display_name = "Unaffiliated"
 
-    # Group users by unit and pick top N per unit
-    unit_members = defaultdict(list)  # unit_id -> [(user_id, total_score)]
-    for user_id, unit_id in user_unit_map.items():
-        unit_members[unit_id].append((user_id, user_totals.get(user_id, 0)))
+        team_key_names[key] = display_name
+        for date, value in events:
+            team_events[key].append((date, value))
+            team_totals[key] += value
 
-    # Build result: one entry per team line
-    # Structure: { position: { unit_name, unit_id, emblem_url, teams: [...] } }
+    # Group teams by unit
+    unit_teams = defaultdict(list)  # unit_id -> [(team_key, total_score)]
+    for (unit_id, team_key), total in team_totals.items():
+        unit_teams[unit_id].append(((unit_id, team_key), total))
+
+    # Build result: one entry per unit
     result = {}
 
-    # Sort units by their top member score descending
+    # Sort units by their top team score descending
     sorted_units = sorted(
         unit_info.keys(),
-        key=lambda uid: max((s for _, s in unit_members.get(uid, [])), default=0),
+        key=lambda uid: max((s for _, s in unit_teams.get(uid, [])), default=0),
         reverse=True,
     )
 
     for i, unit_id in enumerate(sorted_units):
-        members = unit_members.get(unit_id, [])
-        # Sort members by score descending, take top N
-        top_members = sorted(members, key=lambda x: x[1], reverse=True)[:top_n]
+        members = unit_teams.get(unit_id, [])
+        # Sort teams by score descending, take top N
+        top_teams = sorted(members, key=lambda x: x[1], reverse=True)[:top_n]
 
         teams = []
-        for rank, (user_id, total) in enumerate(top_members):
-            events = sorted(user_events.get(user_id, []), key=lambda e: e[0])
+        for rank, (key, total) in enumerate(top_teams):
+            events = sorted(team_events.get(key, []), key=lambda e: e[0])
             solves = [{"value": v, "date": isoformat(d)} for d, v in events]
             teams.append({
-                "user_id": user_id,
-                "name": user_names.get(user_id, "Unknown"),
+                "team_id": key[1] if isinstance(key[1], int) else None,
+                "name": team_key_names.get(key, "Unknown"),
                 "score": total,
                 "is_leader": rank == 0,
                 "solves": solves,
